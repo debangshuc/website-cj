@@ -1,0 +1,63 @@
+:root {
+  /* Color Palette - Restrained Navy, White, Gray, Green, Red */
+  --sidebar-bg: #06152b;
+  --sidebar-hover: #0e2240;
+  --sidebar-active-bg: #ebf3fe;
+  --sidebar-active-text: #2563eb;
+  --sidebar-text: #94a3b8;
+  --sidebar-text-bright: #ffffff;
+  
+  --bg-page: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-hover: #f8fafc;
+  
+  --border-color: #e5e7eb;
+  --border-light: #f1f5f9;
+  
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  
+  --color-primary: #2563eb;
+  --color-primary-dark: #1d4ed8;
+  --color-primary-light: #eff6ff;
+  
+  --color-success: #16a34a;
+  --color-success-bg: #dcfce7;
+  
+  --color-danger: #dc2626;
+  --color-danger-bg: #fee2e2;
+  
+  --color-warning: #d97706;
+  --color-warning-bg: #fef3c7;
+  
+  --color-purple: #6366f1;
+  --color-purple-bg: #ede9fe;
+
+  /* Typography */
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-size-xs: 0.75rem;    /* 12px */
+  --font-size-sm: 0.8125rem;  /* 13px */
+  --font-size-base: 0.875rem; /* 14px */
+  --font-size-md: 1rem;       /* 16px */
+  --font-size-lg: 1.125rem;   /* 18px */
+  --font-size-xl: 1.375rem;   /* 22px */
+  --font-size-2xl: 1.75rem;   /* 28px */
+  
+  /* Layout Sizing */
+  --sidebar-width: 236px;
+  --header-height: 64px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+  
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+
+  /* Transitions */
+  --transition-fast: 0.15s ease-in-out;
+  --transition-normal: 0.25s ease-in-out;
+}

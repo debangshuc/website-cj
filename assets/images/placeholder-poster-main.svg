@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="posterBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ea580c"/>
+      <stop offset="35%" stop-color="#f59e0b"/>
+      <stop offset="70%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  <!-- Background grid mimicking 6 mini-posters in 3x2 grid -->
+  <rect width="200" height="300" fill="#0f172a"/>
+  
+  <!-- Panel 1: Top Left -->
+  <rect x="8" y="8" width="88" height="88" rx="4" fill="#fb923c"/>
+  <circle cx="52" cy="45" r="20" fill="#fde047"/>
+  <path d="M 40 70 Q 52 50 64 70 Z" fill="#b91c1c"/>
+  <circle cx="47" cy="42" r="3" fill="#1e1b4b"/>
+  <circle cx="57" cy="42" r="3" fill="#1e1b4b"/>
+  
+  <!-- Panel 2: Top Right -->
+  <rect x="104" y="8" width="88" height="88" rx="4" fill="#38bdf8"/>
+  <circle cx="148" cy="45" r="20" fill="#fed7aa"/>
+  <path d="M 130 80 Q 148 55 166 80 Z" fill="#0369a1"/>
+  <circle cx="143" cy="43" r="3" fill="#0c4a6e"/>
+  <circle cx="153" cy="43" r="3" fill="#0c4a6e"/>
+  
+  <!-- Panel 3: Mid Left -->
+  <rect x="8" y="104" width="88" height="88" rx="4" fill="#10b981"/>
+  <circle cx="52" cy="140" r="18" fill="#fef08a"/>
+  <path d="M 38 180 Q 52 155 66 180 Z" fill="#047857"/>
+  <circle cx="47" cy="138" r="2.5" fill="#064e3b"/>
+  <circle cx="57" cy="138" r="2.5" fill="#064e3b"/>
+  
+  <!-- Panel 4: Mid Right -->
+  <rect x="104" y="104" width="88" height="88" rx="4" fill="#f43f5e"/>
+  <circle cx="148" cy="140" r="18" fill="#fbcfe8"/>
+  <path d="M 134 180 Q 148 155 162 180 Z" fill="#881337"/>
+  <circle cx="143" cy="138" r="2.5" fill="#4c0519"/>
+  <circle cx="153" cy="138" r="2.5" fill="#4c0519"/>
+  
+  <!-- Panel 5: Bottom Left -->
+  <rect x="8" y="200" width="88" height="92" rx="4" fill="#8b5cf6"/>
+  <circle cx="52" cy="238" r="18" fill="#fde047"/>
+  <path d="M 38 280 Q 52 255 66 280 Z" fill="#5b21b6"/>
+  
+  <!-- Panel 6: Bottom Right -->
+  <rect x="104" y="200" width="88" height="92" rx="4" fill="#e11d48"/>
+  <circle cx="148" cy="238" r="18" fill="#fed7aa"/>
+  <path d="M 134 280 Q 148 255 162 280 Z" fill="#1e293b"/>
+</svg>

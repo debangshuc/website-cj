@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Accessory Inventory - Admin Operations & Inventory</title>
+  
+  <!-- CSS Stylesheets -->
+  <link rel="stylesheet" href="css/variables.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <link rel="stylesheet" href="css/products.css" />
+  <link rel="stylesheet" href="css/sales.css" />
+  <link rel="stylesheet" href="css/login.css" />
+</head>
+<body>
+  <!-- Auth Loading Splash Mount -->
+  <div id="authLoadingMount" class="login-loading-splash" style="display: none;">
+    <div style="font-size: 15px; font-weight: 600; color: var(--color-slate-600);">Loading administrative session...</div>
+  </div>
+
+  <!-- Login View Mount -->
+  <div id="loginMount" style="display: none;"></div>
+
+  <!-- Unauthorized (403 Access Denied) Mount -->
+  <div id="unauthorizedMount" style="display: none;"></div>
+
+  <!-- Main Authenticated App Container -->
+  <div class="app-container" id="appContainer" style="display: none;">
+    <!-- Persistent Left Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="Main Navigation"></aside>
+    
+    <!-- Mobile Backdrop -->
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <!-- Main Content Area -->
+    <div class="main-wrapper">
+      <!-- Top Navigation Header -->
+      <header class="top-header" id="topHeader"></header>
+
+      <!-- Dynamic Views Container -->
+      <main class="dashboard-content" id="mainContent">
+        <!-- 1. Dashboard View -->
+        <div id="dashboardView" class="view-container"></div>
+
+        <!-- 2. Products / Inventory View -->
+        <div id="productsView" class="view-container" style="display: none;"></div>
+
+        <!-- 3. Sales / Transactions View -->
+        <div id="salesView" class="view-container" style="display: none;"></div>
+
+        <!-- 4. Orders Lifecycle Management View -->
+        <div id="ordersView" class="view-container" style="display: none;"></div>
+
+        <!-- 5. Categories Management View -->
+        <div id="categoriesView" class="view-container" style="display: none;"></div>
+
+        <!-- 6. Customers Management View -->
+        <div id="customersView" class="view-container" style="display: none;"></div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal Mounts Container -->
+  <div id="modalContainer">
+    <div id="productModalMount"></div>
+    <div id="deleteModalMount"></div>
+    <div id="saleModalMount"></div>
+    <div id="orderModalMount"></div>
+    <div id="customerModalMount"></div>
+  </div>
+
+  <!-- Application Entry Point (ES Module) -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
