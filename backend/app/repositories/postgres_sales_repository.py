@@ -104,10 +104,15 @@ class PostgresSalesRepository:
         sale = self.session.scalars(stmt).unique().first()
         return self._to_dict(sale) if sale else None
 
-    def create(self, sale_data: dict) -> dict:
+    def create(self, sale_data: dict, *, commit: bool = True) -> dict:
         """
         Atomic sale recording transaction with SELECT ... FOR UPDATE row locking.
         Supports both standalone direct sales and order-completion sales.
+
+        Pass commit=False to participate in a larger, service-owned transaction
+        (atomic order completion): the sale insert is flushed but neither
+        committed nor rolled back here; stock/sales/session state is finalized
+        by the caller.
         """
         product_id = sale_data["product_id"]
         quantity = int(sale_data["quantity"])
@@ -189,19 +194,31 @@ class PostgresSalesRepository:
                     pass
 
             self.session.add(sale)
-            self.session.commit()
+            if commit:
+                self.session.commit()
+            else:
+                self.session.flush()
             self.session.refresh(sale)
             return self._to_dict(sale)
 
         except HTTPException:
-            self.session.rollback()
+            if commit:
+                self.session.rollback()
             raise
         except Exception as exc:
-            self.session.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to record sale: {str(exc)}",
-            )
+            if commit:
+                self.session.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to record sale: {str(exc)}",
+                )
+            raise
+
+    def commit(self) -> None:
+        self.session.commit()
+
+    def rollback(self) -> None:
+        self.session.rollback()
 
     def get_daily_revenue_breakdown(
         self, start_date: datetime, end_date: datetime

@@ -93,12 +93,20 @@ def test_postgres_product_image_url_persistence_and_clear(db_session):
 def test_postgres_product_constraints_rejection(db_session):
     repo = PostgresProductRepository(db_session)
 
+    # Seed a valid product via the supported create interface; reuse its resolved category
+    seed = repo.create({
+        "name": "TEST Constraints Seed",
+        "sku": f"TEST-CON-{uuid.uuid4().hex[:6]}",
+        "category": "TEST Constraints",
+        "price": Decimal("10.00"),
+        "stock": 1,
+    })
+
     # Creating with negative price should violate CHECK constraint
-    cat = repo._get_or_create_category("TEST Constraints")
     invalid_prod = Product(
         name="Invalid Negative Price",
         sku=f"TEST-INV-{uuid.uuid4().hex[:6]}",
-        category_id=cat.id,
+        category_id=seed["category_id"],
         price=Decimal("-50.00"),
         stock=10,
     )

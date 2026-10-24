@@ -57,7 +57,10 @@ export const productsApi = {
     const payload = {
       name: productData.name,
       sku: productData.sku,
-      category: productData.category,
+      // Canonical category identifier takes precedence; backend resolves it
+      // authoritatively. `category` name is kept as a compatibility fallback.
+      category_id: productData.category_id || null,
+      category: productData.category || null,
       price: Number(productData.price),
       stock: Number(productData.stock),
       description: productData.description || null,
@@ -80,6 +83,10 @@ export const productsApi = {
     const payload = {};
     if (updateData.name !== undefined) payload.name = updateData.name;
     if (updateData.sku !== undefined) payload.sku = updateData.sku;
+    // Preserve the canonical selected category identifier; only send it when a
+    // valid one is present so no stale or undefined value reaches the backend.
+    // The backend resolves category_id authoritatively when provided.
+    if (updateData.category_id) payload.category_id = updateData.category_id;
     if (updateData.category !== undefined) payload.category = updateData.category;
     if (updateData.price !== undefined) payload.price = Number(updateData.price);
     if (updateData.stock !== undefined) payload.stock = Number(updateData.stock);

@@ -130,6 +130,52 @@ class PostgresProductRepository:
         product = self.session.scalars(stmt).unique().first()
         return self._to_dict(product) if product else None
 
+    def adjust_inventory(self, product_id: str, quantity: int, *, commit: bool = True) -> Optional[dict]:
+        """
+        Atomically adjust product stock under a SELECT ... FOR UPDATE row lock.
+
+        Positive quantity reserves stock (decrement); negative quantity restores
+        stock (increment, used on order cancellation). The lock plus availability
+        check guarantee two concurrent orders can never reserve the same final
+        units. Pass commit=False to participate in a larger, service-owned
+        transaction (e.g. atomic order creation); the caller is then responsible
+        for committing or rolling back the session.
+        """
+        try:
+            val_uuid = uuid.UUID(str(product_id))
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Product with ID '{product_id}' not found.",
+            )
+
+        stmt = select(Product).where(Product.id == val_uuid).with_for_update()
+        product = self.session.scalars(stmt).first()
+        if not product:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Product with ID '{product_id}' not found.",
+            )
+
+        if quantity > 0:
+            if quantity > product.stock:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Insufficient inventory for '{product.name}'. Only {product.stock} units available.",
+                )
+            product.stock -= quantity
+        elif quantity < 0:
+            product.stock += abs(quantity)
+        else:
+            return self._to_dict(product)
+
+        if commit:
+            self.session.commit()
+        else:
+            self.session.flush()
+        self.session.refresh(product)
+        return self._to_dict(product)
+
     def create(self, product_data: dict) -> dict:
         category_obj = self._resolve_category(
             category_id=product_data.get("category_id"),
@@ -189,6 +235,12 @@ class PostgresProductRepository:
         self.session.commit()
         self.session.refresh(product)
         return self._to_dict(product)
+
+    def commit(self) -> None:
+        self.session.commit()
+
+    def rollback(self) -> None:
+        self.session.rollback()
 
     def soft_delete(self, product_id: str) -> Optional[dict]:
         try:

@@ -2,9 +2,15 @@ import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import List, Optional
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 from app.db.models import Category, Customer, Order, OrderItem, Product
+
+# PostgreSQL's default name for the inline UNIQUE constraint on order_number.
+ORDER_NUMBER_CONSTRAINT_NAME = "orders_order_number_key"
+
+MAX_ORDER_NUMBER_COLLISION_RETRIES = 3
 
 
 class PostgresOrderRepository:
@@ -113,10 +119,27 @@ class PostgresOrderRepository:
         order = self.session.scalars(stmt).unique().first()
         return self._to_dict(order) if order else None
 
-    def create(self, order_data: dict, items_data: List[dict]) -> dict:
+    def create(self, order_data: dict, items_data: List[dict], *, commit: bool = True) -> dict:
+        """
+        Create the order and its line items within the caller's session.
+
+        Pass commit=False to insert without committing so the caller can group
+        inventory reservation, order creation, and status updates into a single
+        atomic transaction. On any failure the caller must roll the session back
+        so partially inserted rows are discarded.
+
+        Order-number generation is a check-then-insert sequence, so concurrent
+        requests can pick the same candidate. A losing candidate raises a
+        unique violation on the order number inside a savepoint: the collision
+        is retried with a fresh candidate while the surrounding transaction
+        (inventory reservation, caller-owned work) stays intact. Only the
+        order-number uniqueness violation is retried; caller-supplied numbers
+        and all other errors propagate immediately. The format
+        ORD-YYYYMMDD-<suffix> is unchanged.
+        """
         order_id_val = order_data.get("id")
         uuid_id = uuid.UUID(str(order_id_val)) if order_id_val and len(str(order_id_val)) == 36 else uuid.uuid4()
-        order_number = order_data.get("order_number") or self._generate_unique_order_number()
+        explicit_order_number = order_data.get("order_number")
 
         cust_id_val = order_data.get("customer_id")
         cust_uuid = uuid.UUID(str(cust_id_val)) if cust_id_val and len(str(cust_id_val)) == 36 else None
@@ -145,25 +168,86 @@ class PostgresOrderRepository:
 
         total = order_data.get("total", subtotal)
 
-        order = Order(
-            id=uuid_id,
-            order_number=order_number,
-            customer_id=cust_uuid,
-            customer_name=order_data.get("customer_name"),
-            customer_email=order_data.get("customer_email"),
-            status=order_data.get("status", "pending"),
-            subtotal=subtotal,
-            total=Decimal(str(total)),
-            notes=order_data.get("notes"),
-        )
-        order.items = order_items_objs
+        order: Optional[Order] = None
+        collision_failures = 0
+        while True:
+            try:
+                candidate_number = explicit_order_number or self._generate_unique_order_number()
+                order = Order(
+                    id=uuid_id,
+                    order_number=candidate_number,
+                    customer_id=cust_uuid,
+                    customer_name=order_data.get("customer_name"),
+                    customer_email=order_data.get("customer_email"),
+                    status=order_data.get("status", "pending"),
+                    subtotal=subtotal,
+                    total=Decimal(str(total)),
+                    notes=order_data.get("notes"),
+                )
+                order.items = order_items_objs
+                with self.session.begin_nested():
+                    self.session.add(order)
+                    self.session.flush()
+                break
+            except IntegrityError as exc:
+                collision_failures += 1
+                if (
+                    explicit_order_number
+                    or collision_failures > MAX_ORDER_NUMBER_COLLISION_RETRIES
+                    or not self._is_order_number_unique_violation(exc)
+                ):
+                    raise
+                # The savepoint rolled back only the collision-losing insert;
+                # the outer transaction (inventory reservation, service-owned
+                # work) remains valid. Regenerate a candidate and retry.
 
-        self.session.add(order)
-        self.session.commit()
+        if commit:
+            self.session.commit()
         self.session.refresh(order)
         return self.get_by_id(str(order.id))
 
-    def update_status(self, order_id: str, new_status: str) -> Optional[dict]:
+    @staticmethod
+    def _is_order_number_unique_violation(exc: IntegrityError) -> bool:
+        """True only for the unique violation raised by the order_number key."""
+        orig = exc.orig
+        sqlstate = getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+        if sqlstate != "23505":
+            return False
+        constraint_name = getattr(getattr(orig, "diag", None), "constraint_name", None)
+        if constraint_name:
+            return constraint_name == ORDER_NUMBER_CONSTRAINT_NAME
+        return "order_number" in str(orig).lower()
+
+    def try_update_status(self, order_id: str, from_status: str, new_status: str, *, commit: bool = True) -> bool:
+        """
+        Concurrency-safe conditional status transition.
+
+        Atomically moves the order from `from_status` to `new_status`. Returns
+        True only when this caller claimed the transition (exactly one row
+        updated, blocking duplicate/cancel-races from acting twice). Returns
+        False when the order is no longer in `from_status` (another request won
+        the race). Pass commit=False to include this update in a larger,
+        service-owned transaction with inventory/sale side effects.
+        """
+        try:
+            val_uuid = uuid.UUID(order_id)
+        except (ValueError, TypeError):
+            return False
+
+        stmt = (
+            update(Order)
+            .where(Order.id == val_uuid, Order.status == from_status)
+            .values(status=new_status, updated_at=datetime.now(timezone.utc))
+        )
+        result = self.session.execute(stmt)
+        if result.rowcount != 1:
+            return False
+
+        if commit:
+            self.session.commit()
+        return True
+
+    def update_status(self, order_id: str, new_status: str, *, commit: bool = True) -> Optional[dict]:
         try:
             val_uuid = uuid.UUID(order_id)
             order = self.session.query(Order).filter_by(id=val_uuid).first()
@@ -175,9 +259,20 @@ class PostgresOrderRepository:
 
         order.status = new_status
         order.updated_at = datetime.now(timezone.utc)
-        self.session.commit()
+        if commit:
+            self.session.commit()
+        else:
+            self.session.flush()
         self.session.refresh(order)
         return self.get_by_id(str(order.id))
+
+    def commit(self) -> None:
+        """Commit the shared session after a multi-step, service-owned transaction."""
+        self.session.commit()
+
+    def rollback(self) -> None:
+        """Roll back the shared session, discarding all uncommitted changes."""
+        self.session.rollback()
 
     def get_metrics(self) -> dict:
         total_stmt = select(

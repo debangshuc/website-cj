@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     # Supabase Auth / JWT Configuration
     SUPABASE_JWT_SECRET: Optional[str] = None
     SUPABASE_JWT_AUDIENCE: str = "authenticated"
+    # Optional explicit override; defaults to <SUPABASE_URL>/auth/v1/.well-known/jwks.json
+    SUPABASE_JWKS_URL: Optional[str] = None
 
     # Administrator Authorization Allowlist
     ADMIN_EMAILS: List[str] = ["admin@accessoryinventory.com"]

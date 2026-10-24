@@ -23,6 +23,9 @@ from app.repositories.customer_repository import (
     CustomerRepositoryProtocol,
     customer_repository,
 )
+from app.repositories.postgres_order_repository import PostgresOrderRepository
+from app.repositories.postgres_product_repository import PostgresProductRepository
+from app.repositories.postgres_sales_repository import PostgresSalesRepository
 
 
 class OrderService:
@@ -134,10 +137,6 @@ class OrderService:
                 "line_total": line_total,
             })
 
-        # 2. Atomically reserve inventory for all items
-        for item_data in items_to_create:
-            self.product_repo.adjust_inventory(item_data["product_id"], item_data["quantity"])
-
         # 3. Create the order record in pending state
         order_data = {
             "customer_id": customer_id,
@@ -149,7 +148,33 @@ class OrderService:
             "notes": order_in.notes.strip() if order_in.notes else None,
         }
 
-        created = self.order_repo.create(order_data, items_to_create)
+        # 4. Atomic write: reserve inventory AND create the order + line items in
+        #    one transaction. If anything fails, every change rolls back.
+        if self._is_postgres_transactional():
+            try:
+                # Consistent lock ordering by product id reduces deadlock risk
+                # across concurrent multi-item orders.
+                for item_data in sorted(items_to_create, key=lambda i: str(i["product_id"])):
+                    self.product_repo.adjust_inventory(
+                        item_data["product_id"], item_data["quantity"], commit=False
+                    )
+                created = self.order_repo.create(order_data, items_to_create, commit=False)
+                self.order_repo.commit()
+            except HTTPException:
+                self.order_repo.rollback()
+                raise
+            except Exception as exc:
+                self.order_repo.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to create order: {str(exc)}",
+                )
+        else:
+            # In-memory repositories (unit testing): single-threaded writes.
+            for item_data in items_to_create:
+                self.product_repo.adjust_inventory(item_data["product_id"], item_data["quantity"])
+            created = self.order_repo.create(order_data, items_to_create)
+
         return OrderResponse(**created)
 
     def update_order_status(self, order_id: str, status_update: OrderStatusUpdate) -> OrderResponse:
@@ -186,6 +211,13 @@ class OrderService:
                 detail=f"Invalid status transition from '{current_status}' to '{target_status}'.",
             )
 
+        if self._is_postgres_transactional():
+            # Atomic Postgres path: claim the status transition conditionally and
+            # apply its side effects (inventory restore / sale records) in one
+            # transaction owned by the service.
+            updated_order = self._transition_status_postgres(order, current_status, target_status)
+            return OrderResponse(**updated_order)
+
         # Handle Side Effects:
         # A) Cancellation -> Restore reserved inventory
         if target_status == "cancelled":
@@ -216,6 +248,73 @@ class OrderService:
 
         updated_order = self.order_repo.update_status(order["id"], target_status)
         return OrderResponse(**updated_order)
+
+    def _is_postgres_transactional(self) -> bool:
+        return (
+            isinstance(self.order_repo, PostgresOrderRepository)
+            and isinstance(self.product_repo, PostgresProductRepository)
+            and isinstance(self.sales_repo, PostgresSalesRepository)
+        )
+
+    def _transition_status_postgres(self, order: dict, current_status: str, target_status: str) -> dict:
+        """
+        Claim the status transition atomically, then apply side effects and
+        commit everything together. A conditional UPDATE (WHERE status =
+        current_status) guarantees duplicate or concurrent lifecycle requests
+        act exactly once: only the winner proceeds to restore inventory or
+        record sales; the loser either gets an idempotent result or a 409.
+        Failures roll back the status change together with all side effects.
+        """
+        order_id = str(order["id"])
+        try:
+            claimed = self.order_repo.try_update_status(
+                order_id, current_status, target_status, commit=False
+            )
+            if not claimed:
+                # Another request modified this row concurrently.
+                refreshed = self.order_repo.get_by_id(order_id)
+                if refreshed and refreshed["status"].lower() == target_status:
+                    return refreshed
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Order '{order_id}' was modified concurrently. Reload and retry.",
+                )
+
+            # A) Cancellation -> Restore reserved inventory exactly once.
+            if target_status == "cancelled":
+                for item in sorted(order.get("items", []), key=lambda i: str(i["product_id"])):
+                    self.product_repo.adjust_inventory(
+                        item["product_id"], -int(item["quantity"]), commit=False
+                    )
+
+            # B) Completion -> Idempotently record sales; stock was already
+            #    reserved at order creation and is NOT decremented again.
+            elif target_status == "completed":
+                for item in order.get("items", []):
+                    sale_payload = {
+                        "product_id": item["product_id"],
+                        "product_name": item.get("product_name", "Product"),
+                        "category": item.get("category", "Accessory"),
+                        "order_id": order_id,
+                        "order_item_id": item.get("id"),
+                        "quantity": item["quantity"],
+                        "unit_price": Decimal(str(item["unit_price"])),
+                        "total": Decimal(str(item["line_total"])),
+                    }
+                    self.sales_repo.create(sale_payload, commit=False)
+
+            self.order_repo.commit()
+            return self.order_repo.get_by_id(order_id)
+
+        except HTTPException:
+            self.order_repo.rollback()
+            raise
+        except Exception as exc:
+            self.order_repo.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to update order status: {str(exc)}",
+            )
 
 
 order_service = OrderService()

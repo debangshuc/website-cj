@@ -1,0 +1,67 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: ci-test-password
+          POSTGRES_DB: website_cj_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      PGPASSWORD: ci-test-password
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - name: Install backend dependencies
+        run: python -m pip install --requirement backend/requirements.txt
+
+      - name: Apply schema migrations (excluding Supabase-only storage migration)
+        run: |
+          set -euo pipefail
+          for migration in supabase/migrations/*.sql; do
+            if [ "$(basename "$migration")" = "20260823000005_create_storage_bucket.sql" ]; then
+              echo "Skipping Supabase-only migration: $(basename "$migration")"
+              continue
+            fi
+            echo "Applying migration: $(basename "$migration")"
+            psql --set ON_ERROR_STOP=1 --host localhost --port 5432 --username postgres --dbname website_cj_ci --file "$migration"
+          done
+
+      - name: Run non-integration test suite
+        working-directory: backend
+        run: python -m pytest tests --ignore=tests/integration -q
+
+      - name: Run PostgreSQL integration test suite (disposable target)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://postgres:ci-test-password@localhost:5432/website_cj_ci
+          INTEGRATION_DB_DISPOSABLE: "true"
+        run: python -m pytest tests/integration -q
