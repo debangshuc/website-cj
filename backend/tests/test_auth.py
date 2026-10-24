@@ -214,13 +214,16 @@ def test_valid_admin_with_app_metadata_role_authenticates_successfully():
     assert isinstance(resp.json(), list)
 
 
-def test_valid_admin_with_allowlist_email_authenticates_successfully():
+def test_valid_admin_with_allowlist_email_authenticates_successfully(monkeypatch):
     """Verify valid admin user on ADMIN_EMAILS allowlist grants access."""
+    # The test defines its own allowlist so it never depends on the real
+    # backend/.env values on this machine or in CI.
+    monkeypatch.setattr(settings, "ADMIN_EMAILS", ["allowlist-test-admin@example.com"])
     clear_auth_overrides()
 
     admin_token = generate_test_jwt(
         sub="admin-allowlist-001",
-        email="admin@accessoryinventory.com",
+        email="allowlist-test-admin@example.com",
         app_metadata={},
     )
     resp = client.get("/api/customers", headers={"Authorization": f"Bearer {admin_token}"})

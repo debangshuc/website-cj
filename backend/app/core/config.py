@@ -1,5 +1,14 @@
+from pathlib import Path
 from typing import List, Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Anchor the env file to the backend package directory (backend/.env) so the
+# effective configuration no longer depends on the current working directory
+# of the running process (e.g. uvicorn started from the repository root).
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
+
+BACKEND_ROOT = _ENV_FILE.parent
 
 
 class Settings(BaseSettings):
@@ -30,7 +39,7 @@ class Settings(BaseSettings):
     ALLOWED_IMAGE_TYPES: List[str] = ["image/jpeg", "image/png", "image/webp"]
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
