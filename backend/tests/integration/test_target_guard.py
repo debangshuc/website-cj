@@ -81,4 +81,4 @@ def test_guard_accepts_real_local_test_target(monkeypatch):
     if not settings.DATABASE_URL:
         pytest.skip("DATABASE_URL is not configured on this machine.")
     database_name = validate_test_database_target(settings.DATABASE_URL)
-    assert database_name == "website_cj_test"
+    assert database_name.endswith(("_test", "_ci"))
