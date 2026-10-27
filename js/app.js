@@ -14,6 +14,8 @@ import { ProductsView } from './views/productsView.js';
 import { SalesView } from './views/salesView.js';
 import { OrdersView } from './views/ordersView.js';
 import { CategoriesView } from './views/categoriesView.js';
+import { CustomersView } from './views/customersView.js';
+import { ReportsView } from './views/reportsView.js';
 
 export const AUTH_STATE = {
   LOADING: 'AUTHENTICATION_LOADING',
@@ -71,7 +73,9 @@ class InventoryApp {
     this.salesViewEl = document.getElementById('salesView');
     this.ordersViewEl = document.getElementById('ordersView');
     this.categoriesViewEl = document.getElementById('categoriesView');
+    this.customersViewEl = document.getElementById('customersView');
     this.modalContainerEl = document.getElementById('modalContainer');
+    this.reportsViewEl = document.getElementById('reportsView');
   }
 
   initViews() {
@@ -94,6 +98,8 @@ class InventoryApp {
     this.salesView = new SalesView(this.salesViewEl, this.modalContainerEl, store);
     this.ordersView = new OrdersView(this.ordersViewEl, this.modalContainerEl);
     this.categoriesView = new CategoriesView(this.categoriesViewEl, this.modalContainerEl);
+    this.customersView = new CustomersView(this.customersViewEl, this.modalContainerEl);
+    this.reportsView = new ReportsView(this.reportsViewEl);
   }
 
   initShell() {
@@ -202,53 +208,52 @@ class InventoryApp {
     window.location.hash = routeId;
   }
 
+  hideAllViews() {
+    this.dashboardView.hide();
+    this.productsView.hide();
+    this.salesView.hide();
+    this.ordersView.hide();
+    this.categoriesView.hide();
+    this.customersView.hide();
+    this.reportsView.hide();
+  }
+
   routeTo(routeId) {
     if (this.authState !== AUTH_STATE.AUTHENTICATED) return;
 
     const cleanRoute = (routeId || 'dashboard').split('?')[0];
     this.currentRoute = cleanRoute;
     this.toggleSidebar(false);
+    this.hideAllViews();
 
     if (cleanRoute === 'categories') {
       if (this.sidebarController) this.sidebarController.setActive('categories');
       if (this.headerController) this.headerController.setTitle('Categories');
-      this.dashboardView.hide();
-      this.productsView.hide();
-      this.salesView.hide();
-      this.ordersView.hide();
       this.categoriesView.render();
     } else if (cleanRoute === 'orders') {
       if (this.sidebarController) this.sidebarController.setActive('orders');
       if (this.headerController) this.headerController.setTitle('Orders');
-      this.dashboardView.hide();
-      this.productsView.hide();
-      this.salesView.hide();
-      this.categoriesView.hide();
       this.ordersView.render();
     } else if (cleanRoute === 'sales') {
       if (this.sidebarController) this.sidebarController.setActive('sales');
       if (this.headerController) this.headerController.setTitle('Sales');
-      this.dashboardView.hide();
-      this.productsView.hide();
-      this.ordersView.hide();
-      this.categoriesView.hide();
       this.salesView.render();
     } else if (cleanRoute === 'products') {
       if (this.sidebarController) this.sidebarController.setActive('products');
       if (this.headerController) this.headerController.setTitle('Products');
-      this.dashboardView.hide();
-      this.salesView.hide();
-      this.ordersView.hide();
-      this.categoriesView.hide();
       this.productsView.render();
+    } else if (cleanRoute === 'customers') {
+      if (this.sidebarController) this.sidebarController.setActive('customers');
+      if (this.headerController) this.headerController.setTitle('Customers');
+      this.customersView.render();
+    } else if (cleanRoute === 'reports') {
+      if (this.sidebarController) this.sidebarController.setActive('reports');
+      if (this.headerController) this.headerController.setTitle('Reports');
+      this.reportsView.render();
     } else {
       // Default to Dashboard
       if (this.sidebarController) this.sidebarController.setActive('dashboard');
       if (this.headerController) this.headerController.setTitle('Dashboard');
-      this.productsView.hide();
-      this.salesView.hide();
-      this.ordersView.hide();
-      this.categoriesView.hide();
       this.dashboardView.render();
     }
   }

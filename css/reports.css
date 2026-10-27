@@ -1,0 +1,48 @@
+/* ==========================================================================
+   Reports View
+   ========================================================================== */
+.reports-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.reports-period-toggle {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.reports-period-btn {
+  padding: 5px 12px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.reports-period-btn:hover {
+  background-color: var(--bg-hover);
+  border-color: #cbd5e1;
+}
+
+.reports-period-btn.active {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #ffffff;
+}
+
+@media (max-width: 1024px) {
+  .reports-summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .reports-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
