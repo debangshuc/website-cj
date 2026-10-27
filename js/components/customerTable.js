@@ -1,6 +1,29 @@
 import { icons } from '../icons.js';
 
 /**
+ * Escape HTML-unsafe characters in customer/product controlled text before rendering.
+ */
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Compact lifetime summary, e.g. "Anime Poster × 4 · Keychain × 3".
+ */
+function renderLifetimeItems(items = []) {
+  if (!items || items.length === 0) return 'No orders';
+  const summary = items
+    .map((item) => `${escapeHtml(item.product_name)} × ${Number(item.total_quantity || 0)}`)
+    .join(' · ');
+  return `<span style="display: inline-block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom;" title="${summary}">${summary}</span>`;
+}
+
+/**
  * Render Customers Data Table
  * @param {HTMLElement} container - DOM mount container
  * @param {Array} customers - List of CustomerResponse objects
@@ -50,17 +73,20 @@ export function renderCustomerTable(container, customers = [], callbacks = {}) {
       <tr class="table-row">
         <td class="table-cell" style="font-weight: 700; color: #0f172a;">
           <a href="javascript:void(0)" class="view-customer-link" data-customer-id="${cust.id}" style="color: var(--color-primary, #2563eb); text-decoration: none;">
-            ${cust.name}
+            ${escapeHtml(cust.name)}
           </a>
         </td>
         <td class="table-cell" style="color: #475569; font-size: 13px;">
-          ${cust.email || '—'}
+          ${cust.email ? escapeHtml(cust.email) : '—'}
         </td>
         <td class="table-cell" style="color: #475569; font-size: 13px;">
-          ${cust.phone || '—'}
+          ${cust.phone ? escapeHtml(cust.phone) : '—'}
         </td>
         <td class="table-cell" style="font-weight: 600; color: #334155;">
           ${cust.order_count || 0} orders
+        </td>
+        <td class="table-cell" style="font-weight: 600; color: #334155; font-size: 13px;">
+          ${renderLifetimeItems(cust.lifetime_items)}
         </td>
         <td class="table-cell" style="font-weight: 700; color: #0f172a;">
           ₹${parseFloat(cust.total_spent || 0).toFixed(2)}
@@ -92,6 +118,7 @@ export function renderCustomerTable(container, customers = [], callbacks = {}) {
             <th class="table-th">Email</th>
             <th class="table-th">Phone</th>
             <th class="table-th">Orders</th>
+            <th class="table-th">Lifetime Items</th>
             <th class="table-th">Total Spent</th>
             <th class="table-th">Last Order</th>
             <th class="table-th">Status</th>

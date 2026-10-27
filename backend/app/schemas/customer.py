@@ -83,12 +83,25 @@ class CustomerUpdate(BaseModel):
         return clean if clean else None
 
 
+class CustomerLifetimeItem(BaseModel):
+    product_id: str = Field(..., description="Product identifier")
+    product_name: str = Field(..., description="Product display name")
+    total_quantity: int = Field(..., ge=0, description="Total quantity ordered across all non-cancelled orders")
+
+
+class CustomerOrderItemSummary(BaseModel):
+    product_id: str = Field(..., description="Product identifier")
+    product_name: str = Field(..., description="Product display name")
+    quantity: int = Field(..., description="Quantity ordered on this line")
+
+
 class CustomerOrderSummary(BaseModel):
     id: str = Field(..., description="Unique Order UUID")
     order_number: str = Field(..., description="Human-readable Order number")
     status: str = Field(..., description="Order lifecycle status")
     total: Decimal = Field(..., description="Order total amount")
     created_at: str = Field(..., description="ISO 8601 creation timestamp")
+    items: List[CustomerOrderItemSummary] = Field(default_factory=list, description="Product items belonging to this order")
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -104,6 +117,7 @@ class CustomerResponse(BaseModel):
     order_count: int = Field(default=0, description="Total non-cancelled orders count")
     completed_order_count: int = Field(default=0, description="Completed orders count")
     total_spent: Decimal = Field(default=Decimal("0.00"), description="Authoritative total revenue accumulated from completed orders")
+    lifetime_items: List[CustomerLifetimeItem] = Field(default_factory=list, description="Per-product quantity totals aggregated across the customer's non-cancelled orders")
     last_order_at: Optional[str] = Field(default=None, description="ISO timestamp of most recent order")
     created_at: str = Field(..., description="ISO 8601 creation timestamp")
     updated_at: str = Field(..., description="ISO 8601 last update timestamp")

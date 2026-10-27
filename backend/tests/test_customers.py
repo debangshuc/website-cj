@@ -193,3 +193,127 @@ def test_cannot_create_order_for_inactive_customer():
     )
     assert order_resp.status_code == 400
     assert "inactive" in order_resp.json()["detail"].lower()
+
+
+def _get_customer_list_entry(client, customer_id):
+    listing = client.get("/api/customers", params={"page_size": 100}).json()
+    return next(c for c in listing if c["id"] == customer_id)
+
+
+def test_lifetime_items_aggregate_same_product_and_distinct_products():
+    cust_resp = client.post(
+        "/api/customers",
+        json={"name": "Nisha Roy", "email": "nisha.roy@example.com"},
+    )
+    assert cust_resp.status_code == 201
+    customer_id = cust_resp.json()["id"]
+
+    # Order A: two distinct products, pending (non-cancelled)
+    order_a_resp = client.post(
+        "/api/orders",
+        json={
+            "customer_id": customer_id,
+            "items": [
+                {"product_id": "PRD-101", "quantity": 3},
+                {"product_id": "PRD-105", "quantity": 1},
+            ],
+        },
+    )
+    assert order_a_resp.status_code == 201
+    order_a = order_a_resp.json()
+
+    # Order B: same PRD-101 again (must aggregate) plus another product
+    order_b_resp = client.post(
+        "/api/orders",
+        json={
+            "customer_id": customer_id,
+            "items": [
+                {"product_id": "PRD-101", "quantity": 2},
+                {"product_id": "PRD-108", "quantity": 5},
+            ],
+        },
+    )
+    assert order_b_resp.status_code == 201
+    order_b = order_b_resp.json()
+
+    # 1. Detail exposes the aggregated lifetime breakdown
+    detail = client.get(f"/api/customers/{customer_id}").json()
+    quantity_by_product = {
+        item["product_id"]: item["total_quantity"] for item in detail["lifetime_items"]
+    }
+    assert quantity_by_product["PRD-101"] == 5  # 3 + 2 across two orders
+    assert quantity_by_product["PRD-105"] == 1
+    assert quantity_by_product["PRD-108"] == 5
+    assert len(detail["lifetime_items"]) == 3  # distinct products, no duplicate rows
+
+    # 2. Existing invariant: non-cancelled count & pending spend semantics unchanged
+    assert detail["order_count"] == 2
+    assert Decimal(str(detail["total_spent"])) == Decimal("0.00")
+
+    # 3. Listing carries the same breakdown (no N+1 dependency on detail only)
+    list_entry = _get_customer_list_entry(client, customer_id)
+    list_quantity_by_product = {
+        item["product_id"]: item["total_quantity"] for item in list_entry["lifetime_items"]
+    }
+    assert list_quantity_by_product["PRD-101"] == 5
+
+    # 4. Cancelled orders are excluded from lifetime item quantities
+    cancel_b = client.patch(
+        f"/api/orders/{order_b['id']}/status", json={"status": "cancelled"}
+    )
+    assert cancel_b.status_code == 200
+    entry_after_cancel = _get_customer_list_entry(client, customer_id)
+    after_cancel_quantities = {
+        item["product_id"]: item["total_quantity"] for item in entry_after_cancel["lifetime_items"]
+    }
+    assert after_cancel_quantities == {"PRD-101": 3, "PRD-105": 1}
+    assert entry_after_cancel["order_count"] == 1
+
+    cancel_a = client.patch(
+        f"/api/orders/{order_a['id']}/status", json={"status": "cancelled"}
+    )
+    assert cancel_a.status_code == 200
+    entry_all_cancelled = _get_customer_list_entry(client, customer_id)
+    assert entry_all_cancelled["lifetime_items"] == []
+    assert entry_all_cancelled["order_count"] == 0
+    assert Decimal(str(entry_all_cancelled["total_spent"])) == Decimal("0.00")
+
+
+def test_customer_without_orders_has_empty_lifetime_items_summary():
+    cust_resp = client.post(
+        "/api/customers",
+        json={"name": "No Orders Nomad", "email": "nomad@example.com"},
+    )
+    assert cust_resp.status_code == 201
+    customer_id = cust_resp.json()["id"]
+
+    # Customer still appears in listing with an empty summary
+    entry = _get_customer_list_entry(client, customer_id)
+    assert entry["name"] == "No Orders Nomad"
+    assert entry["lifetime_items"] == []
+    assert entry["order_count"] == 0
+    assert Decimal(str(entry["total_spent"])) == Decimal("0.00")
+
+    detail = client.get(f"/api/customers/{customer_id}").json()
+    assert detail["lifetime_items"] == []
+
+
+def test_seed_customer_lifetime_items_consistent_orders_and_revenue():
+    # Seed data: cust-001 has one completed order of PRD-101 quantity 2 (500.00)
+    listing = client.get("/api/customers").json()
+    aarav = next(c for c in listing if c["id"] == "cust-001")
+    assert aarav["lifetime_items"] == [
+        {
+            "product_id": "PRD-101",
+            "product_name": "Anime Poster Collection",
+            "total_quantity": 2,
+        }
+    ]
+    assert aarav["order_count"] == 1
+    assert aarav["completed_order_count"] == 1
+    assert Decimal(str(aarav["total_spent"])) >= Decimal("500.00")
+
+    detail = client.get("/api/customers/cust-001").json()
+    assert {i["product_id"]: i["total_quantity"] for i in detail["lifetime_items"]} == {
+        "PRD-101": 2
+    }

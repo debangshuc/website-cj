@@ -77,6 +77,26 @@ class InMemoryCustomerRepository:
     def reset_to_default(self) -> None:
         self._customers = {c["id"]: dict(c) for c in _get_initial_customers()}
 
+    def _aggregate_lifetime_items(self, orders: List[dict]) -> List[dict]:
+        totals: Dict[str, dict] = {}
+        for order in orders:
+            if order.get("status") == "cancelled":
+                continue
+            for item in order.get("items", []):
+                product_id = item.get("product_id")
+                if not product_id:
+                    continue
+                entry = totals.get(product_id)
+                if not entry:
+                    entry = {
+                        "product_id": product_id,
+                        "product_name": item.get("product_name") or "Unknown Product",
+                        "total_quantity": 0,
+                    }
+                    totals[product_id] = entry
+                entry["total_quantity"] += int(item.get("quantity") or 0)
+        return sorted(totals.values(), key=lambda e: e["product_name"].lower())
+
     def _enrich_customer(self, customer: dict) -> dict:
         cust_copy = dict(customer)
         cust_id = cust_copy["id"]
@@ -93,6 +113,7 @@ class InMemoryCustomerRepository:
         cust_copy["order_count"] = len(active_orders)
         cust_copy["completed_order_count"] = len(completed_orders)
         cust_copy["total_spent"] = total_spent
+        cust_copy["lifetime_items"] = self._aggregate_lifetime_items(orders)
         cust_copy["last_order_at"] = last_order
         return cust_copy
 

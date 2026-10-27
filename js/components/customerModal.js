@@ -1,6 +1,69 @@
 import { icons } from '../icons.js';
 
 /**
+ * Escape HTML-unsafe characters in customer/product controlled text before rendering.
+ */
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Render the "Lifetime Items Ordered" section: per-product totals across the
+ * customer's non-cancelled orders.
+ */
+function renderLifetimeItemsSection(items = []) {
+  if (!items || items.length === 0) {
+    return `
+      <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 8px;">Lifetime Items Ordered</h4>
+        <div style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; text-align: center; color: #64748b; font-size: 13px;">
+          No lifetime items ordered yet.
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div style="margin-bottom: 20px;">
+      <h4 style="font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 8px;">Lifetime Items Ordered</h4>
+      <div style="border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          <thead>
+            <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #64748b; text-align: left;">
+              <th style="padding: 8px 12px;">Product</th>
+              <th style="padding: 8px 12px; text-align: right;">Total Quantity</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map((item) => `
+              <tr style="border-bottom: 1px solid #e2e8f0;">
+                <td style="padding: 8px 12px; font-weight: 600; color: #0f172a;">${escapeHtml(item.product_name)}</td>
+                <td style="padding: 8px 12px; text-align: right; color: #334155;">${Number(item.total_quantity || 0)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Compact per-order item summary, e.g. "2 × Anime Poster · 1 × Keychain".
+ */
+function renderOrderItemsSummary(items = []) {
+  if (!items || items.length === 0) return '—';
+  return items
+    .map((item) => `${Number(item.quantity || 0)} × ${escapeHtml(item.product_name)}`)
+    .join('<br/>');
+}
+
+/**
  * Customer Modal Component (Add / Edit / View Customer Details & Order History)
  */
 export class CustomerModal {
@@ -189,6 +252,7 @@ export class CustomerModal {
           <thead>
             <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #64748b; text-align: left;">
               <th style="padding: 8px 12px;">Order #</th>
+              <th style="padding: 8px 12px;">Items</th>
               <th style="padding: 8px 12px;">Status</th>
               <th style="padding: 8px 12px; text-align: right;">Total Amount</th>
               <th style="padding: 8px 12px; text-align: right;">Date</th>
@@ -197,8 +261,9 @@ export class CustomerModal {
           <tbody>
             ${recentOrders.map((o) => `
               <tr style="border-bottom: 1px solid #e2e8f0;">
-                <td style="padding: 8px 12px; font-weight: 600; color: #2563eb;">${o.order_number}</td>
-                <td style="padding: 8px 12px;"><span style="text-transform: capitalize; font-size: 12px; font-weight: 600;">${o.status}</span></td>
+                <td style="padding: 8px 12px; font-weight: 600; color: #2563eb;">${escapeHtml(o.order_number)}</td>
+                <td style="padding: 8px 12px; color: #475569; font-size: 12px; max-width: 180px;">${renderOrderItemsSummary(o.items)}</td>
+                <td style="padding: 8px 12px;"><span style="text-transform: capitalize; font-size: 12px; font-weight: 600;">${escapeHtml(o.status)}</span></td>
                 <td style="padding: 8px 12px; text-align: right; font-weight: 700; color: #0f172a;">₹${parseFloat(o.total).toFixed(2)}</td>
                 <td style="padding: 8px 12px; text-align: right; color: #64748b;">${new Date(o.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
               </tr>
@@ -211,19 +276,19 @@ export class CustomerModal {
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
         <div>
           <div style="font-size: 12px; color: #64748b; font-weight: 500;">Email</div>
-          <div style="font-weight: 600; color: #0f172a; margin-top: 2px;">${customer.email || '—'}</div>
+          <div style="font-weight: 600; color: #0f172a; margin-top: 2px;">${customer.email ? escapeHtml(customer.email) : '—'}</div>
         </div>
         <div>
           <div style="font-size: 12px; color: #64748b; font-weight: 500;">Phone</div>
-          <div style="font-weight: 600; color: #0f172a; margin-top: 2px;">${customer.phone || '—'}</div>
+          <div style="font-weight: 600; color: #0f172a; margin-top: 2px;">${customer.phone ? escapeHtml(customer.phone) : '—'}</div>
         </div>
         <div style="grid-column: 1 / -1;">
           <div style="font-size: 12px; color: #64748b; font-weight: 500;">Address</div>
-          <div style="color: #334155; margin-top: 2px; font-size: 13px;">${customer.address || '—'}</div>
+          <div style="color: #334155; margin-top: 2px; font-size: 13px;">${customer.address ? escapeHtml(customer.address) : '—'}</div>
         </div>
         ${customer.notes ? `
           <div style="grid-column: 1 / -1; background: #f8fafc; border-radius: 6px; padding: 10px 14px; font-size: 13px; color: #475569;">
-            <strong>Notes:</strong> ${customer.notes}
+            <strong>Notes:</strong> ${escapeHtml(customer.notes)}
           </div>
         ` : ''}
       </div>
@@ -243,6 +308,8 @@ export class CustomerModal {
           <div style="font-size: 18px; font-weight: 700; color: #2563eb; margin-top: 2px;">₹${parseFloat(customer.total_spent || 0).toFixed(2)}</div>
         </div>
       </div>
+
+      ${renderLifetimeItemsSection(customer.lifetime_items)}
 
       <div>
         <h4 style="font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 8px;">Recent Customer Orders</h4>

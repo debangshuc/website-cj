@@ -4,7 +4,7 @@ from decimal import Decimal
 from typing import List, Optional
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
-from app.db.models import Customer, Order
+from app.db.models import Customer, Order, OrderItem, Product
 
 
 class PostgresCustomerRepository:
@@ -26,7 +26,46 @@ class PostgresCustomerRepository:
             .group_by(Customer.id)
         )
 
-    def _row_to_dict(self, row) -> dict:
+    def _get_lifetime_items(
+        self, customer_ids: List[uuid.UUID]
+    ) -> dict:
+        """
+        Grouped per-product quantity totals for the customers' non-cancelled orders.
+        A single grouped query for all requested customer IDs (no N+1 pattern).
+        """
+        if not customer_ids:
+            return {}
+
+        stmt = (
+            select(
+                Order.customer_id.label("lifetime_customer_id"),
+                Product.id.label("lifetime_product_id"),
+                Product.name.label("lifetime_product_name"),
+                func.coalesce(func.sum(OrderItem.quantity), 0).label("lifetime_total_quantity"),
+            )
+            .select_from(OrderItem)
+            .join(Order, Order.id == OrderItem.order_id)
+            .join(Product, Product.id == OrderItem.product_id)
+            .where(
+                Order.status != "cancelled",
+                Order.customer_id.in_(customer_ids),
+            )
+            .group_by(Order.customer_id, Product.id, Product.name)
+            .order_by(Order.customer_id, Product.name)
+        )
+
+        grouped = {}
+        for row in self.session.execute(stmt).all():
+            grouped.setdefault(row.lifetime_customer_id, []).append(
+                {
+                    "product_id": str(row.lifetime_product_id),
+                    "product_name": row.lifetime_product_name,
+                    "total_quantity": int(row.lifetime_total_quantity or 0),
+                }
+            )
+        return grouped
+
+    def _row_to_dict(self, row, lifetime_items=None) -> dict:
         cust = row[0]
         order_count = int(row[1] or 0)
         completed_order_count = int(row[2] or 0)
@@ -44,6 +83,7 @@ class PostgresCustomerRepository:
             "order_count": order_count,
             "completed_order_count": completed_order_count,
             "total_spent": total_spent,
+            "lifetime_items": lifetime_items or [],
             "last_order_at": last_order_at,
             "created_at": cust.created_at.isoformat() if cust.created_at else "",
             "updated_at": cust.updated_at.isoformat() if cust.updated_at else "",
@@ -93,7 +133,11 @@ class PostgresCustomerRepository:
         stmt = stmt.offset(offset_val).limit(page_size)
 
         rows = self.session.execute(stmt).all()
-        return [self._row_to_dict(r) for r in rows]
+        lifetime_by_customer = self._get_lifetime_items([row[0].id for row in rows])
+        return [
+            self._row_to_dict(r, lifetime_by_customer.get(r[0].id, []))
+            for r in rows
+        ]
 
     def get_by_id(self, customer_id: str) -> Optional[dict]:
         try:
@@ -103,7 +147,10 @@ class PostgresCustomerRepository:
 
         stmt = self._build_aggregate_query().where(Customer.id == val_uuid)
         row = self.session.execute(stmt).first()
-        return self._row_to_dict(row) if row else None
+        if not row:
+            return None
+        lifetime_by_customer = self._get_lifetime_items([val_uuid])
+        return self._row_to_dict(row, lifetime_by_customer.get(val_uuid, []))
 
     def get_by_email(self, email: str) -> Optional[dict]:
         if not email:
@@ -111,7 +158,10 @@ class PostgresCustomerRepository:
         norm_email = email.strip().lower()
         stmt = self._build_aggregate_query().where(func.lower(Customer.email) == norm_email)
         row = self.session.execute(stmt).first()
-        return self._row_to_dict(row) if row else None
+        if not row:
+            return None
+        lifetime_by_customer = self._get_lifetime_items([row[0].id])
+        return self._row_to_dict(row, lifetime_by_customer.get(row[0].id, []))
 
     def create(self, customer_data: dict) -> dict:
         cust_id_val = customer_data.get("id")
@@ -166,12 +216,40 @@ class PostgresCustomerRepository:
 
         stmt = select(Order).where(Order.customer_id == val_uuid).order_by(Order.created_at.desc())
         orders = self.session.scalars(stmt).all()
+        if not orders:
+            return []
+
+        # Attach order items in one grouped query for all fetched orders (no N+1).
+        items_stmt = (
+            select(
+                OrderItem.order_id.label("item_order_id"),
+                OrderItem.quantity.label("item_quantity"),
+                Product.id.label("item_product_id"),
+                Product.name.label("item_product_name"),
+            )
+            .select_from(OrderItem)
+            .join(Product, Product.id == OrderItem.product_id)
+            .where(OrderItem.order_id.in_([o.id for o in orders]))
+            .order_by(OrderItem.created_at)
+        )
+
+        items_by_order = {}
+        for row in self.session.execute(items_stmt).all():
+            items_by_order.setdefault(row.item_order_id, []).append(
+                {
+                    "product_id": str(row.item_product_id),
+                    "product_name": row.item_product_name,
+                    "quantity": int(row.item_quantity or 0),
+                }
+            )
+
         return [
             {
                 "id": str(o.id),
                 "order_number": o.order_number,
                 "status": o.status,
                 "total": o.total,
+                "items": items_by_order.get(o.id, []),
                 "created_at": o.created_at.isoformat() if o.created_at else "",
             }
             for o in orders
